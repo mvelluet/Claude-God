@@ -1852,6 +1852,18 @@ struct MenuBarView: View {
             .disabled(!manager.isAuthenticated || manager.isLoading)
             .keyboardShortcut("r", modifiers: .command)
 
+            if let status = manager.refreshStatus {
+                HStack(spacing: 3) {
+                    Image(systemName: status.icon)
+                        .font(.system(size: 9))
+                    Text(status.message)
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(status.color)
+                .transition(.opacity.combined(with: .move(edge: .leading)))
+                .animation(.easeInOut(duration: 0.2), value: manager.refreshStatus)
+            }
+
             Spacer()
 
             Text("v\(UpdateChecker.currentVersion)")

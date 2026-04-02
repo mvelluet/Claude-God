@@ -30,6 +30,34 @@ enum RefreshInterval: Int, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Refresh status
+
+enum RefreshStatus: Equatable {
+    case success
+    case rateLimited(seconds: Int)
+
+    var message: String {
+        switch self {
+        case .success: return "Updated"
+        case .rateLimited(let seconds): return "Rate limited — retry in \(seconds)s"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .success: return "checkmark.circle.fill"
+        case .rateLimited: return "clock.arrow.circlepath"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .success: return .green
+        case .rateLimited: return .orange
+        }
+    }
+}
+
 // MARK: - Menu bar display mode
 
 enum MenuBarDisplayMode: Int, CaseIterable, Identifiable {
@@ -210,6 +238,7 @@ class UsageManager: ObservableObject {
     private var currentFetchID: UUID?
     @Published var errorMessage: String?
     @Published var lastRefresh: Date?
+    @Published var refreshStatus: RefreshStatus?
     @Published var timeUntilReset: String = "—"
     @Published var timeUntilSessionReset: String = "—"
     @Published var timeUntilWeeklyReset: String = "—"
@@ -1033,9 +1062,9 @@ class UsageManager: ObservableObject {
 
     /// Refresh if data is older than 2 minutes (called on popover appear)
     func refreshIfStale() {
-        let staleThreshold: TimeInterval = 120
+        let staleThreshold: TimeInterval = 600
         if let last = lastRefresh, Date().timeIntervalSince(last) < staleThreshold { return }
-        Log.info("Data stale (>2min) — auto-refreshing on popover open")
+        Log.info("Data stale (>10min) — auto-refreshing on popover open")
         refresh()
     }
 
@@ -1186,6 +1215,7 @@ class UsageManager: ObservableObject {
                     self.parseUsageResponse(data)
                     self.finishLoading()
                     self.lastRefresh = Date()
+                    self.showRefreshStatus(.success)
                     self.refreshStats()
                     self.checkNotifications()
                     self.checkResetNotifications()
@@ -1232,6 +1262,7 @@ class UsageManager: ObservableObject {
                         let cooldown = min(retryAfterValue > 0 ? retryAfterValue : 30.0, 60.0)
                         self.finishLoading()
                         self.rateLimitedUntil = Date().addingTimeInterval(cooldown)
+                        self.showRefreshStatus(.rateLimited(seconds: Int(cooldown)))
                         Log.info("Rate limited (429), keeping existing data, retry in \(Int(cooldown))s")
                     } else if retryCount < Self.maxRetries {
                         let delay = 5 * pow(2.0, Double(retryCount))
@@ -1413,6 +1444,14 @@ class UsageManager: ObservableObject {
             options: .userInitiatedAllowingIdleSystemSleep,
             reason: "Keep refresh timers alive"
         )
+    }
+
+    private func showRefreshStatus(_ status: RefreshStatus) {
+        refreshStatus = status
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self, self.refreshStatus == status else { return }
+            self.refreshStatus = nil
+        }
     }
 
     private func setupWakeObserver() {
